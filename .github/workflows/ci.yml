@@ -8,6 +8,11 @@ on:
 jobs:
   python:
     runs-on: windows-latest
+    # windows-latest 是英文 locale（cp1252）：脚本/错误信息里的中文 print 会
+    # UnicodeEncodeError。统一 UTF-8，别让"输出编码"变成门禁红。
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,9 +33,6 @@ jobs:
         run: uv run mypy src tests workers scripts
       - name: Pytest
         run: uv run pytest -m "not gpu and not slow and not net" -q
-        env:
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: "utf-8"
 
   web:
     runs-on: windows-latest
