@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     恢复演练（T4.12 · §03.7.4「每月一次」）。

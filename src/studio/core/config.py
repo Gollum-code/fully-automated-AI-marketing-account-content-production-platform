@@ -1349,7 +1349,10 @@ class TtsModelConfig(_Base):
     """模型与推理环境（T2.1 落地的东西在这里被**指**到，而不是被复制）。
 
     为什么 :attr:`dir` 允许绝对路径：权重有 5 GB 且**不进仓库**（``.gitignore`` 覆盖
-    ``models/``），放在 D 盘是正常用法（R1 只管「不许落系统盘」）。
+    ``models/``），放在别的盘是正常用法（R1 只管「不许落系统盘」）。
+
+    相对路径按仓库内处理：仓库本身可能就落在系统盘（例如只有一块 C 盘的机器），
+    此时 ``models/...`` 是**仓库内**的既有资产，不能再按「写爆系统盘」拦下。
     """
 
     dir: _ConfigPath
@@ -1363,10 +1366,15 @@ class TtsModelConfig(_Base):
     @field_validator("dir", "source_dir", "matcha_dir")
     @classmethod
     def _not_on_system_drive(cls, value: Path | None) -> Path | None:
-        """R1：模型与源码都不许落系统盘（5 GB 权重塞 C 盘是"装完就后悔"的典型）。"""
+        """R1：模型与源码都不许落系统盘（5 GB 权重塞 C 盘是"装完就后悔"的典型）。
+
+        例外：**相对路径**。它由仓库根解析，属于「仓库内既有资产」——仓库本身在 C 盘
+        时（单盘机器）没有别的盘可去，不能因为盘符就把已下载好的权重判成非法配置。
+        绝对路径仍按原规则拒绝，避免用户手填 ``C:\\models`` 绕过 R1。
+        """
         if value is None:
             return None
-        if is_on_system_drive(value):
+        if value.is_absolute() and is_on_system_drive(value):
             raise ValueError(f"{value} 落在系统盘（R1 禁止）")
         return value
 
@@ -1478,15 +1486,20 @@ class ConfigBundle(BaseModel):
     def assert_lan_auth(self) -> None:
         """局域网鉴权守卫（§01.2.5 安全底线）。
 
-        ``allow_lan=true`` 但既无环境变量密码也无 ``secrets.yaml`` 密码 ⇒ 拒绝启动。
-        密码生成（首次启动写 ``config/secrets.yaml``）属于 serve 启动路径，见 T1.12。
+        需要密码的两种情况：``allow_lan=true``，或 ``host`` 本身就绑到了非回环地址
+        （用户手改 ``0.0.0.0`` 时不能绕过）。两者都没有密码 ⇒ 拒绝启动。
         """
-        if self.app.web.allow_lan and not self.secrets.has_webui_password:
+        loopback = self.app.web.host.strip().strip("[]").casefold() in {
+            "127.0.0.1",
+            "::1",
+            "localhost",
+        }
+        if (self.app.web.allow_lan or not loopback) and not self.secrets.has_webui_password:
             raise ConfigError(
-                "app.web.allow_lan=true 但未设置 WebUI 密码 ⇒ 拒绝启动",
+                "WebUI 绑定到局域网但未设置密码 ⇒ 拒绝启动",
                 code=ErrorCode.AUTH_LAN_WITHOUT_PASSWORD,
                 context={
-                    "allow_lan": True,
+                    "allow_lan": self.app.web.allow_lan,
                     "host": self.app.web.host,
                     "checked": ["env:STUDIO_WEBUI_PASSWORD", "config/secrets.yaml:webui.password"],
                 },
@@ -1753,7 +1766,11 @@ def _is_within(child: Path, parent: Path) -> bool:
 
 
 def _guard_paths(bundle: ConfigBundle, paths: StudioPaths) -> None:
-    """路径越界守卫：``app.paths`` 覆盖项必须落在仓库内且不在系统盘（R1）。"""
+    """路径越界守卫：``app.paths`` 覆盖项必须落在仓库内。
+
+    R1 只管**仓库外**的绝对路径：仓库本身可能就在系统盘（单盘机器），
+    此时仓库内的 ``data/...`` 是正常用法，不能再按「写爆系统盘」拦下。
+    """
     problems: list[dict[str, str]] = []
     for field_name, raw in bundle.app.paths.items_set():
         candidate = raw if raw.is_absolute() else paths.home / raw
@@ -1764,28 +1781,20 @@ def _guard_paths(bundle: ConfigBundle, paths: StudioPaths) -> None:
                 {"field": f"app.paths.{field_name}", "value": str(raw), "reason": f"无法解析：{exc}"}
             )
             continue
-        if is_on_system_drive(resolved):
-            problems.append(
-                {
-                    "field": f"app.paths.{field_name}",
-                    "value": str(resolved),
-                    "reason": "落在系统盘（R1 禁止）",
-                }
-            )
-        elif not _is_within(resolved, paths.home):
-            problems.append(
-                {
-                    "field": f"app.paths.{field_name}",
-                    "value": str(resolved),
-                    "reason": "逃出仓库根（越界路径）",
-                }
-            )
+        if _is_within(resolved, paths.home):
+            continue
+        reason = (
+            "落在系统盘（R1 禁止）"
+            if raw.is_absolute() and is_on_system_drive(resolved)
+            else "逃出仓库根（越界路径）"
+        )
+        problems.append({"field": f"app.paths.{field_name}", "value": str(resolved), "reason": reason})
     if problems:
         raise ConfigError(
             f"配置中的路径越界（{len(problems)} 处）",
             code=ErrorCode.CONFIG_PATH_OUT_OF_BOUNDS,
             context={"problems": problems, "studio_home": str(paths.home)},
-            remediation="把 app.paths 下的路径改为仓库内相对路径，或指向非系统盘的仓库内位置",
+            remediation="把 app.paths 下的路径改为仓库内相对路径；仓库外的绝对路径不得落在系统盘",
         )
 
 

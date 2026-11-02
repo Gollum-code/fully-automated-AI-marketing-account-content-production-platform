@@ -74,8 +74,10 @@ class FakeRunner:
         target = Path(argv[-1])
         if index <= self.fail_first:
             return FakeCompleted(returncode=1, stderr=self.stderr)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"jpeg")
+        # 量宽那一遍的输出是 `-`（stdout 汇），不是文件：写它会在仓库根造出垃圾文件 `-`。
+        if target.name != "-":
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"jpeg")
         return FakeCompleted(stderr=self.stdout_stderr)
 
 
@@ -246,9 +248,7 @@ class TestBuildCoverArgv:
         _build(
             tmp_path,
             runner,
-            style=CoverConfig(
-                title_color="0x00FF00", highlight_color="0x0000FF", outline=0, scrim=0.0
-            ),
+            style=CoverConfig(title_color="0x00FF00", highlight_color="0x0000FF", outline=0, scrim=0.0),
         )
         chain = runner.calls[0][runner.calls[0].index("-vf") + 1]
         assert "fontcolor=0x00FF00" in chain

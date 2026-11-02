@@ -14,6 +14,9 @@
     TMP / TEMP              FFmpeg 临时文件 / 滤镜图    ← 必须离开系统盘
     STUDIO_LLM_API_KEY      密钥（不入库、不入 git）    ← 可缺（E6，非阻塞）
 
+    「必须离开系统盘」在**单盘机器**上豁免：仓库本身就在系统盘时，
+    ``STUDIO_HOME`` 内的路径（``data/caches/...``）按仓库内既有资产处理。
+
 门禁（§README.6）：``free_C < 1 GB`` 或 ``free_D < 15 GB`` ⇒ 拒绝启动。
 """
 
@@ -130,8 +133,17 @@ class EnvSettings(BaseSettings):
         return {name: getattr(self, name) for name in OFF_SYSTEM_DRIVE_FIELDS}
 
     def system_drive_violations(self) -> list[str]:
-        """返回落在系统盘上的字段名（空列表 = 通过）。"""
-        return [name for name, path in self.off_system_drive_paths.items() if is_on_system_drive(path)]
+        """返回落在系统盘上的字段名（空列表 = 通过）。
+
+        仓库内路径豁免：仓库本身可能就在系统盘（单盘机器），此时
+        ``STUDIO_HOME\\data`` 下的缓存 / 临时目录是正常用法；R1 真正要防的是
+        **仓库外**的绝对路径把 5 GB 权重写进系统盘。
+        """
+        return [
+            name
+            for name, path in self.off_system_drive_paths.items()
+            if is_on_system_drive(path) and not _is_within(path, self.studio_home)
+        ]
 
     def has_llm_key(self) -> bool:
         return self.studio_llm_api_key is not None and bool(self.studio_llm_api_key.get_secret_value())
@@ -222,10 +234,20 @@ def inspect_env_contract(env: dict[str, str] | None = None) -> EnvContractReport
         if name == "STUDIO_HOME":
             items[name] = ("ok", str(candidate))
             continue
-        if is_on_system_drive(candidate):
+        if is_on_system_drive(candidate) and not _is_within(candidate, Path(source["STUDIO_HOME"])):
             items[name] = ("wrong_drive", str(candidate))
             wrong_drive.append(name)
             continue
         items[name] = ("ok", str(candidate))
 
     return EnvContractReport(items=items, missing=tuple(missing), wrong_drive=tuple(wrong_drive))
+
+
+def _is_within(child: Path, parent: Path) -> bool:
+    """``child`` 是否位于 ``parent`` 之内（含相等）。"""
+    try:
+        child_resolved = child.resolve()
+        parent_resolved = parent.resolve()
+    except OSError:
+        return False
+    return child_resolved == parent_resolved or parent_resolved in child_resolved.parents

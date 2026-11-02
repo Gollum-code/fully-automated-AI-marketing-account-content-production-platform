@@ -1,0 +1,9 @@
+# 提交前的最小门禁：只跑 ruff（快、无副作用）。
+# 完整门禁是 `.\tasks.ps1 check`（ruff + web 契约 + mypy + pytest）。
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

@@ -61,7 +61,7 @@ def main() -> int:
         print("[check] 生成物已漂移：" + ", ".join(drift))
         print("[check] 修复：uv run python scripts/dump_web_contracts.py")
         return 1
-    print("[check] Web 契约与后端一致 ✅")
+    print("[check] Web 契约与后端一致")
     return 0
 
 

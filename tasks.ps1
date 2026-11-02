@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     开发任务入口（T1.1）：把常用命令收敛成 `.\tasks.ps1 <task>`。
@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'lint', 'type', 'test', 'test-all', 'doctor', 'sync', 'sync-tts', 'clean', 'web', 'web:gen', 'web:check', 'web:verify')]
+    [ValidateSet('check', 'fmt', 'lint', 'type', 'test', 'test-all', 'cov', 'doctor', 'sync', 'sync-tts', 'clean', 'web', 'web:gen', 'web:check', 'web:verify')]
     [string]$Task = 'check'
 )
 
@@ -42,6 +42,7 @@ try {
         'type'     { uv run mypy src tests workers scripts }
         'test'     { uv run pytest -m 'not gpu and not slow and not net' -q }
         'test-all' { uv run pytest -q }
+        'cov'      { uv run pytest -m 'not gpu and not slow and not net' -q --cov=studio --cov-report=term-missing }
         'doctor'   { uv run studio doctor }
         'sync'     { uv sync --extra dev }
         'sync-tts' { uv sync --project tts }

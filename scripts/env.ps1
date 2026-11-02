@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   scripts/env.ps1 —— 环境变量重定向闸门（T1.1 · §02.2）
 
@@ -6,10 +6,10 @@
       . "$PSScriptRoot\..\scripts\env.ps1"
 
   作用：把 uv / pip / huggingface / modelscope / torch / playwright / TEMP
-        全部重定向到 D 盘，防止写爆系统盘（R1：C 盘可用空间常年 < 5 GB）。
+        全部重定向到**仓库内** `data/caches/`，防止写爆系统盘（R1：只有一块盘时
+        仓库内是唯一可行解；有独立数据盘的机器用 `.env` 覆盖到那里）。
 
   规则：`.env`（若存在）覆盖脚本内置默认值；内置默认值覆盖已存在的进程环境变量。
-        唯一例外：已显式指向 D 盘的 UV_CACHE_DIR 会被内置默认值纠正为规范路径。
 #>
 param(
     # 静默模式：不打印横幅，保证 -Json 输出可被机器直接解析
@@ -21,20 +21,27 @@ $ErrorActionPreference = 'Stop'
 
 $StudioHome = Split-Path -Parent $PSScriptRoot
 $StudioDataDir = Join-Path $StudioHome 'data'
+$StudioCacheDir = Join-Path $StudioDataDir 'caches'
 
 # ── 规范值（唯一真相，与 .env.example 保持一致）─────────────────
+# 默认全部落在仓库内（data/caches）。单盘机器（只有 C:）上是唯一可行解；
+# 有独立数据盘的机器在 .env 里覆盖成 D:\ai_models\... 即可。
 $StudioEnvDefaults = [ordered]@{
     STUDIO_HOME             = $StudioHome
     STUDIO_DATA_DIR         = $StudioDataDir
-    HF_HOME                 = 'D:\ai_models\huggingface_cache'
-    MODELSCOPE_CACHE        = 'D:\ai_models\modelscope_cache'
-    TORCH_HOME              = 'D:\ai_models\torch'
-    UV_CACHE_DIR            = 'D:\ai_models\uv_cache'
-    PIP_CACHE_DIR           = 'D:\ai_models\pip_cache'
-    NPM_CONFIG_CACHE        = 'D:\ai_models\npm_cache'
-    PLAYWRIGHT_BROWSERS_PATH= 'D:\ai_models\playwright'
+    HF_HOME                 = (Join-Path $StudioCacheDir 'huggingface')
+    MODELSCOPE_CACHE        = (Join-Path $StudioCacheDir 'modelscope')
+    TORCH_HOME              = (Join-Path $StudioCacheDir 'torch')
+    UV_CACHE_DIR            = (Join-Path $StudioCacheDir 'uv')
+    PIP_CACHE_DIR           = (Join-Path $StudioCacheDir 'pip')
+    NPM_CONFIG_CACHE        = (Join-Path $StudioCacheDir 'npm')
+    PLAYWRIGHT_BROWSERS_PATH= (Join-Path $StudioCacheDir 'playwright')
     TEMP                    = (Join-Path $StudioDataDir 'tmp')
     TMP                     = (Join-Path $StudioDataDir 'tmp')
+    # 中文 Windows 默认用 GBK 读写；配置里的中文注释会让 mypy 读取失败，
+    # stdout 里的 emoji 会 UnicodeEncodeError。统一 UTF-8。
+    PYTHONUTF8              = '1'
+    PYTHONIOENCODING        = 'utf-8'
 }
 
 # ── 叠加 .env（存在则覆盖默认值）──────────────────────────────
@@ -80,13 +87,13 @@ $StudioEnvDirs = @(
     (Join-Path $StudioDataDir 'cache\tts')
     (Join-Path $StudioDataDir 'backups')
     (Join-Path $StudioDataDir 'logs')
-    'D:\ai_models\huggingface_cache'
-    'D:\ai_models\modelscope_cache'
-    'D:\ai_models\torch'
-    'D:\ai_models\uv_cache'
-    'D:\ai_models\pip_cache'
-    'D:\ai_models\npm_cache'
-    'D:\ai_models\playwright'
+    (Join-Path $StudioCacheDir 'huggingface')
+    (Join-Path $StudioCacheDir 'modelscope')
+    (Join-Path $StudioCacheDir 'torch')
+    (Join-Path $StudioCacheDir 'uv')
+    (Join-Path $StudioCacheDir 'pip')
+    (Join-Path $StudioCacheDir 'npm')
+    (Join-Path $StudioCacheDir 'playwright')
 )
 foreach ($d in $StudioEnvDirs) {
     if (-not (Test-Path -LiteralPath $d)) {

@@ -104,9 +104,9 @@ def _segment_summary(asset: ScannedAsset) -> str:
 
 
 def _print_asset(asset: ScannedAsset, *, dry_run: bool) -> None:
-    mark = "✅" if asset.check.ok else "❌"
+    mark = "[ok]" if asset.check.ok else "[!!]"
     if asset.check.ok and asset.check.warnings:
-        mark = "⚠️"
+        mark = "[~]"
     if not asset.check.ok:
         action = "不能入库"
     elif dry_run:
@@ -116,9 +116,9 @@ def _print_asset(asset: ScannedAsset, *, dry_run: bool) -> None:
         action = "入库失败"
     else:
         action = _ACTION_TEXT.get(asset.action, "已入库")
-    print(f"  {mark} {asset.id:<20} {_segment_summary(asset)}  → {action}")
+    print(f"  {mark} {asset.id:<20} {_segment_summary(asset)}  -> {action}")
     for problem in asset.check.problems:
-        print(f"       ✗ {problem.message}")
+        print(f"       x {problem.message}")
     for warning in asset.check.warnings:
         print(f"       ! {warning.message}")
     if asset.action is None and not dry_run and asset.check.ok:

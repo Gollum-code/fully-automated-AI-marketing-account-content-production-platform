@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from freezegun import freeze_time
 from typer.testing import CliRunner
 
 from studio.cli import app
@@ -85,6 +86,7 @@ def _log_rows(paths: StudioPaths) -> int:
 # ══════════════════════════════════════════════════════════════════════
 
 
+@freeze_time(NOW)
 def test_dry_run_reports_without_touching_anything(home: Path) -> None:
     """★ ``--dry-run`` 是"上生产前先看一眼"的那个开关，必须真的不动手。"""
     paths = _paths()
@@ -98,6 +100,7 @@ def test_dry_run_reports_without_touching_anything(home: Path) -> None:
     assert _log_rows(paths) == 1
 
 
+@freeze_time(NOW)
 def test_run_actually_deletes_expired_rows(home: Path) -> None:
     paths = _paths()
     migrate(paths.db_file)

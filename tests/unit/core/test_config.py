@@ -322,6 +322,27 @@ def test_path_inside_repo_is_allowed(config_paths: StudioPaths) -> None:
     assert loaded.bundle.app.paths.work_dir is not None
 
 
+def test_tts_model_relative_paths_are_allowed_on_system_drive(
+    config_paths: StudioPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """单盘机器：仓库在 C 盘时，``models/...`` 是仓库内既有资产，不该被 R1 拦下。"""
+    monkeypatch.setenv("SystemDrive", "C:")
+    loaded = _load(config_paths)
+    assert loaded.bundle.tts.model.dir == Path("models/CosyVoice2-0.5B")
+
+
+def test_tts_model_absolute_path_on_system_drive_is_rejected(
+    config_paths: StudioPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1 仍然管**绝对路径**：手填 ``C:\\models`` 不能绕过。"""
+    monkeypatch.setenv("SystemDrive", "C:")
+    _edit(config_paths, "tts", lambda data: data["model"].__setitem__("dir", r"C:\models\cosy"))
+    with pytest.raises(ConfigError) as excinfo:
+        _load(config_paths)
+    assert excinfo.value.code is ErrorCode.CONFIG_INVALID
+    assert "系统盘" in str(excinfo.value.context["errors"][0]["error"])
+
+
 def test_watermark_must_live_under_templates(config_paths: StudioPaths) -> None:
     _edit(config_paths, "outputs", lambda data: data["watermark"].__setitem__("path", "data/logo.png"))
     error = _expect(config_paths, ErrorCode.CONFIG_PATH_OUT_OF_BOUNDS)
@@ -351,6 +372,13 @@ def test_lan_with_env_password_ok(config_paths: StudioPaths) -> None:
     _edit(config_paths, "app", lambda data: data["web"].__setitem__("allow_lan", True))
     loaded = _load(config_paths, {"STUDIO_WEBUI_PASSWORD": "s3cret"})
     assert loaded.bundle.secrets.has_webui_password
+
+
+def test_non_loopback_host_without_password_rejected(config_paths: StudioPaths) -> None:
+    """手改 host 到 0.0.0.0 也不能绕过密码门禁。"""
+    _edit(config_paths, "app", lambda data: data["web"].__setitem__("host", "0.0.0.0"))
+    error = _expect(config_paths, ErrorCode.AUTH_LAN_WITHOUT_PASSWORD)
+    assert error.context["host"] == "0.0.0.0"
 
 
 def test_lan_with_secrets_file_ok(config_paths: StudioPaths) -> None:
@@ -414,6 +442,8 @@ def test_env_override_parses_json_types(config_paths: StudioPaths) -> None:
         "STUDIO_CFG__PUBLISH__METRICS_SCHEDULE_HOURS": "[2, 12]",
         "STUDIO_CFG__POOLS__POOLS__DRAFT__CONCURRENCY": "4",
         "STUDIO_CFG__APP__WEB__HOST": "0.0.0.0",
+        # 0.0.0.0 现在必须配密码（单测只关心类型解析，补一个让门禁通过）
+        "STUDIO_WEBUI_PASSWORD": "pw",
     }
     bundle = _load(config_paths, env).bundle
     assert bundle.publish.metrics_schedule_hours == [2, 12]

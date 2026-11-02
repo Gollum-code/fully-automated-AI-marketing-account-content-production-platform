@@ -44,6 +44,7 @@ function config(overrides: Partial<PersonaConfig> = {}): PersonaConfig {
     target_chars_min: 600,
     target_chars_max: 800,
     max_duration_ms: 180000,
+    speaker_names: ["熊大", "熊二"],
     ...overrides,
   };
 }
@@ -60,6 +61,7 @@ function limits(overrides: Partial<PersonaLimits> = {}): PersonaLimits {
     target_chars_min: { min: 100, max: 5000 },
     target_chars_max: { min: 100, max: 8000 },
     max_duration_ms: { min: 10000, max: 1800000 },
+    speaker_names: { min: 1, max: 2 },
     ...overrides,
   };
 }

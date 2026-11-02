@@ -72,7 +72,7 @@
 
 | 原则 | 工程强制手段 |
 | --- | --- |
-| **P1 本地优先** | 零外部服务；全链路可断网；模型权重与媒资落 `D:` 盘；每个外部依赖都有降级路径 |
+| **P1 本地优先** | 零外部服务；全链路可断网；模型权重与媒资落仓库内（单盘）或独立数据盘（多盘），**不许写系统盘**；每个外部依赖都有降级路径 |
 | **P2 按句可续传** | 续传粒度 = 句子（场景级属二期）；产物路径由内容哈希决定；任何时刻杀进程均可恢复 |
 | **P3 随机防搬运** | 随机化在编译前决策、种子化、落盘可复现；素材受「近 K 任务不重复」约束；相似度审计门禁（**与是否做音画同步无关**） |
 | **P4 无人工介入** | 唯一人工节点 = 确认闸（仅 B 级）；其他环节禁止设计人工步骤；失败必须自动重试或降级 |
@@ -80,17 +80,18 @@
 
 ---
 
-## 本机环境基线（探针实测 2026-09-13）
+## 本机环境基线（探针实测 2026-11-02）
 
 | 项 | 实测 | 结论 |
 | --- | --- | --- |
-| CPU / OS | 12 逻辑核 / Windows 11 (10.0.26200) | ✅ |
-| GPU | RTX 2080 SUPER 8 GB（sm_75，桌面已占 1.49 GB） | ⚠️ 可用但紧：TTS 必须 fp16，**禁 bf16**，NVENC 仅 H.264/HEVC（**无 AV1**） |
-| 推理栈 | `D:\Torch` 已预置 `torch 2.4.0+cu121` cp311 wheel | ✅ 锁定 Python 3.11 + cu121，无需装 CUDA Toolkit |
-| FFmpeg | gyan.dev full build 2025-10-21 | ✅ `libass / xfade / loudnorm / sidechaincompress / nvenc` 全在位 |
-| SQLite / Node / uv | 3.51.1 / v22.12.0 / 0.11.17 | ✅ 支持 `UPDATE ... RETURNING` 原子认领 |
-| **磁盘 C:** | **仅剩 1.80 GB** | 🔴 **硬约束**：`TEMP / HF_HOME / UV_CACHE_DIR / PIP_CACHE_DIR / PLAYWRIGHT_BROWSERS_PATH` 必须全部重定向到 `D:` |
-| **磁盘 D:** | 剩 79.64 GB | ⚠️ 够用（一期 ≈ 90–120 MB/任务），但必须配 GC |
+| CPU / OS | Ryzen AI 9 H 365（20 逻辑核 / 30 GB RAM）/ Windows 11 26H2 (10.0.26300) | ✅ |
+| GPU | 本机探针未见 NVIDIA 适配器（`Win32_VideoController` 仅 AMD Radeon 880M / 虚拟显示）；`nvidia-smi` 不在 PATH | ⚠️ TTS 会走 CPU 回退；TTS 子环境按目标机（RTX 5060 / sm_120）预装 `torch 2.7.1+cu128`，到目标机无需改依赖 |
+| 推理栈 | app 环境 Python 3.12；TTS 子环境 Python 3.11 + `torch 2.7.1+cu128` | ✅ 两个 venv 物理隔离（TTS 的 cp311 轮子在 `tts/pyproject.toml`） |
+| FFmpeg | 外部 full build（`STUDIO_FFMPEG_BIN` / `STUDIO_FFPROBE_BIN` 可覆盖） | ✅ `libass / xfade / loudnorm / sidechaincompress` 全在位；不在 PATH 时用环境变量指路 |
+| SQLite / Node / uv | 3.51.1 / v24.20.0 / 0.11.x | ✅ 支持 `UPDATE ... RETURNING` 原子认领 |
+| **磁盘** | **单盘 C:（约 810 GB 可用）** | ⚠️ 没有 D 盘：缓存 / 临时目录默认落仓库内 `data/caches/`（R1 只拦仓库外的绝对路径） |
+
+> 换到有独立数据盘的机器时，复制 `.env.example` 为 `.env` 并覆盖 `HF_HOME` 等变量即可，无需改代码。
 
 ---
 
@@ -98,11 +99,11 @@
 
 | 项 | 用途 | 现状 |
 | --- | --- | --- |
-| 🔴 **MC 跑酷素材包** → `data/assets/mc_parkour/`（★由你提供，D3） | 背景视频（建议 ≥60 条 / ≥30 分钟） | 占位 58 条（`tags:["placeholder"]`，**非正式素材**；`D:\MC` 仍空） |
+| 🔴 **MC 跑酷素材包** → `data/assets/mc_parkour/`（★由你提供，D3） | 背景视频（建议 ≥60 条 / ≥30 分钟） | 占位 58 条（`tags:["placeholder"]`，**非正式素材**；正式素材仍未入库） |
 | ⚪ **水印 PNG** → `templates/<tid>/assets/images/watermark.png` | **固定水印（可选）**：有就贴、没有就跳过 | 缺失（**不阻塞**：照常出片，只是没水印） |
 | 🔴 **BGM 音乐库** | 混音（**已确认开启**，Q12）；**可经 WebUI 素材库导入**（`bgm_tracks`），缺失则静音降级 | 占位 2 条（同上，非正式素材） |
 | 🔴 **熊大熊二原声** → `data/voice_src/{bigbear,littlebear}/` | 零样本复刻（各 2–3 段，10–30s/段，**无 BGM**） | 缺失（**硬阻塞 T2.4**） |
-| 🔴 **CosyVoice 模型权重** → `models/` | 配音推理（2–4 GB，版本待核验 Q7） | **缺失 ⇒ 硬阻塞 T2 全阶段 · M2** |
+| 🔴 **CosyVoice 模型权重** → `models/` | 配音推理（2–4 GB，版本待核验 Q7） | ✅ 已就位 `models/CosyVoice2-0.5B`（仓库内，已 gitignore） |
 | 🟡 **LLM API Key** | 写稿 / 审稿等 Agent（[OI] 兼容） | 未提供（不阻塞；`studio llm probe` 报 `no_key`） |
 | 🟡 **`config/persona.yaml`** | 频道定位（**唯一人工必填**） | ✅ 已就位（`persona_default` 熊大熊二·MC跑酷；库内 2 套）。**口吻 / 受众 / 禁区是数据不是代码**：面板可改、热重载生效、`validate` 不过拒绝保存、可回滚 |
 
@@ -144,6 +145,11 @@
 开 Vite 开发服务器 —— 后者只在改前端源码时用（`cd web && npm run dev`，5173 端口，
 把 `/api` 与 `/ws` 代理到 8787）。改了前端源码要跑 `cd web && npm run build`，
 API 才会看到新的产物。
+
+> **局域网访问**：把 `config/app.yaml` 的 `web.allow_lan` 改成 `true`，并设置
+> `STUDIO_WEBUI_PASSWORD`（或 `config/secrets.yaml:webui.password`）。此时服务会绑
+> `0.0.0.0`，并且 **REST 与 WebSocket 都强制 Basic 认证**（只有 `/api/v1/health` 免认证）。
+> 没有密码而把 host 改成 `0.0.0.0` 会被启动门禁直接拒绝。
 
 **从零到第一支片子**（面板上四步，全在「渲染」面板）：
 

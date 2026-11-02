@@ -449,11 +449,12 @@ def test_page_requires_a_kind(client: TestClient) -> None:
 
 def test_page_bounds_are_enforced_at_the_edge(client: TestClient) -> None:
     """页码与每页条数在**入参**就卡范围：不卡的话 `page_size=100000` 就是"把整库拖过来"。"""
-    for params in (
+    cases: tuple[dict[str, str | int], ...] = (
         {"kind": "broll", "page": 0},
         {"kind": "broll", "page_size": 0},
         {"kind": "broll", "page_size": 100_000},
-    ):
+    )
+    for params in cases:
         resp = client.get(LIST_URL, params=params)
         assert resp.status_code == 422, params
         assert _error(resp.json()) == ErrorCode.VALIDATION_FAILED.value

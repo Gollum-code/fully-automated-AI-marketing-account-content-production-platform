@@ -24,5 +24,16 @@ wget==3.2
 rich==13.7.1
 matplotlib==3.7.5
 
-# 常驻服务（studio.tts.server）需要：Windows 上 ZoneInfo 靠这个包
+# CosyVoice 源码在 import 期真正用到的（缺一个就 "ErrorDuringImport"）
+# ---------------------------------------------------------------
+# frontend.py 用 whisper 做 tokenizer 的镜像（text_frontend=False 时也 import）
+openai-whisper==20231117
+# cosyvoice.flow.flow_matching 的模块级 import
+lightning==2.2.4
+# cosyvoice.dataset.processor 的模块级 import
+pyarrow==18.1.0
+# 频谱/基频相关（cosyvoice/utils）
+pyworld==0.3.4
+
+# 常驻服务（studio.tts.server）需要：Windows 无 ZoneInfo 靠这个包
 tzdata>=2025.1

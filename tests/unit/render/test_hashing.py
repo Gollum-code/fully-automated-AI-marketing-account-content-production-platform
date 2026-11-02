@@ -186,8 +186,8 @@ def test_input_digests_skips_the_black_fill(outputs: OutputsConfig, tmp_path: Pa
 # 人物贴图：换图（T6.5 追加 · 裁定 392）
 # ══════════════════════════════════════════════════════════════════════
 
-STICKER_REL = "templates/t/assets/images/stickers/hero.png"
-STICKER_SPEAKING_REL = "templates/t/assets/images/stickers/hero_speaking.png"
+STICKER_REL = Path("templates/t/assets/images/stickers/hero.png")
+STICKER_SPEAKING_REL = Path("templates/t/assets/images/stickers/hero_speaking.png")
 
 
 def _sticker_plans(

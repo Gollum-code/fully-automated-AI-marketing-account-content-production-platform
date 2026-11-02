@@ -31,6 +31,7 @@ from studio.agents.planner import PlannerAgent
 from studio.agents.prompts import PromptLibrary
 from studio.agents.writer import WriterAgent
 from studio.app.metrics import MetricsPump
+from studio.app.middleware.auth import WebUiAuth
 from studio.app.persona_events import PersonaBroadcaster
 from studio.app.recycle import MetricsRecyclePump, SchedulePump
 from studio.app.watchdog import WatchdogPump
@@ -202,6 +203,9 @@ class AppState:
     #: Publisher。``None`` ⇒ 真的那个（会起浏览器）。与 `asset_tools` 同一条 ——
     #: 换一次假件，单测就不必以"这台机器装没装 Chromium"为前提。
     publish_publishers: PublisherBuilder | None = None
+    #: WebUI 认证策略（§01.2.5）。``None`` / ``required=False`` ⇒ 只绑回环、不要求密码。
+    #: 由 ``create_app`` 按 ``app.yaml`` + ``secrets.yaml`` 现算，测试可注入假件。
+    web_auth: WebUiAuth | None = None
 
     def close(self) -> None:
         """关连接（Hub 由 `lifespan` 先停）。"""

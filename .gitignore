@@ -49,7 +49,7 @@ web/*.tsbuildinfo
 
 # ── TTS 运行时项目 ──────────────────────────────────────
 tts/.venv/
-tts/uv.lock
+# tts/uv.lock **入库**：TTS 依赖（torch cu128 / CosyVoice 生态）必须可复现。
 
 # ── Playwright 登录态（敏感，禁止备份外传）──────────────
 data/browser_profile/

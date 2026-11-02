@@ -41,7 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
 
 from fastapi import FastAPI, Request
@@ -489,11 +489,14 @@ def resolve_out_path(
         return paths.tts_work_dir_for(request.task_id) / f"s{request.seq:03d}.wav"
 
     relative = PurePosixPath(request.out_path)
-    if relative.is_absolute() or ".." in relative.parts:
+    # 同时用 Windows 口径再判一次：``C:/evil.wav`` 在 PurePosixPath 里是**相对路径**
+    # （``C:`` 被当成普通目录名），必须在落盘前按盘符拦下。
+    windows = PureWindowsPath(request.out_path)
+    if relative.is_absolute() or windows.is_absolute() or windows.drive or ".." in relative.parts:
         raise StudioError(
             f"out_path 必须是 data/ 下的相对路径：{request.out_path}",
             code=ErrorCode.CONFIG_PATH_OUT_OF_BOUNDS,
-            context={"out_path": request.out_path, "reason": "绝对路径或含 .."},
+            context={"out_path": request.out_path, "reason": "绝对路径 / 盘符 / 含 .."},
             remediation="传相对 data/ 的 POSIX 路径，例如 work/<task_id>/tts/s001.wav",
         )
     target = (data_root / Path(*relative.parts)).resolve()

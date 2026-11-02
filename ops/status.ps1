@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     查看制片台五进程的台账 / 存活 / 端口（T1.12）。

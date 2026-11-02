@@ -52,6 +52,16 @@ def test_inspect_flags_system_drive(contract_env: dict[str, str], monkeypatch: p
     assert report.items["HF_HOME"][0] == "ok"
 
 
+def test_inspect_allows_paths_inside_home_on_system_drive(
+    contract_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """单盘机器：仓库在 C 盘时，``STUDIO_HOME`` 内的缓存路径是仓库内既有资产。"""
+    monkeypatch.setenv("SystemDrive", "C:")
+    report = inspect_env_contract(dict(contract_env))
+    assert report.wrong_drive == ()
+    assert report.ok
+
+
 def test_load_raises_on_missing(contract_env: dict[str, str]) -> None:
     env = {k: v for k, v in contract_env.items() if k != "PIP_CACHE_DIR"}
     with pytest.raises(ConfigError) as excinfo:

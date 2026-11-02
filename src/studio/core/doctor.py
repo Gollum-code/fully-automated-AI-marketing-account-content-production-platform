@@ -147,6 +147,16 @@ def _run(argv: Sequence[str], *, timeout: int = PROBE_TIMEOUT_SEC) -> tuple[int,
     return result.returncode, result.stdout, result.stderr
 
 
+def _is_within(child: Path, parent: Path) -> bool:
+    """``child`` 是否位于 ``parent`` 之内（含相等，先 ``resolve`` 避免 ``..`` 误判）。"""
+    try:
+        child_resolved = child.resolve()
+        parent_resolved = parent.resolve()
+    except OSError:
+        return False
+    return child_resolved == parent_resolved or parent_resolved in child_resolved.parents
+
+
 def _parse_filter_names(filters_output: str) -> frozenset[str]:
     """从 ``ffmpeg -filters`` 输出解析滤镜名（行格式：``<flags> <name> <in->out> <desc>``）。"""
     names: set[str] = set()
@@ -352,6 +362,7 @@ class Doctor:
         psutil = _psutil()
         system_drive = self._env.get("SystemDrive", "C:")
         data_drive = self._paths.data_dir.drive or system_drive
+        gate_c_bytes, gate_d_bytes = self._disk_gate_limits()
         usage: dict[str, Any] = {}
         try:
             for label, drive in (("C", system_drive), ("D", data_drive)):
@@ -373,11 +384,16 @@ class Doctor:
 
         free_c = int(usage["C"]["free_gb"] * 1024**3)
         free_d = int(usage["D"]["free_gb"] * 1024**3)
-        gate_c = int(psutil.disk_usage(f"{system_drive}\\").free) >= DISK_GATE_FREE_C_BYTES
-        gate_d = int(psutil.disk_usage(f"{data_drive}\\").free) >= DISK_GATE_FREE_D_BYTES
+        gate_c = int(psutil.disk_usage(f"{system_drive}\\").free) >= gate_c_bytes
+        gate_d = int(psutil.disk_usage(f"{data_drive}\\").free) >= gate_d_bytes
+        gate_c_gb = gate_c_bytes / 1024**3
+        gate_d_gb = gate_d_bytes / 1024**3
+        same_drive = system_drive.casefold() == data_drive.casefold()
+        where = "（单盘：系统盘即数据盘）" if same_drive else ""
         detail = (
-            f"C 盘可用 {usage['C']['free_gb']} GB（门禁 ≥1 GB）、"
-            f"数据盘 {usage['D']['drive']} 可用 {usage['D']['free_gb']} GB（门禁 ≥15 GB）"
+            f"C 盘可用 {usage['C']['free_gb']} GB（门禁 ≥{gate_c_gb:g} GB）、"
+            f"数据盘 {usage['D']['drive']} 可用 {usage['D']['free_gb']} GB（门禁 ≥{gate_d_gb:g} GB）"
+            f"{where}"
         )
         if not (gate_c and gate_d):
             return CheckResult(
@@ -395,6 +411,20 @@ class Doctor:
             detail=detail,
             data={"usage": usage, "free_c": free_c, "free_d": free_d},
         )
+
+    def _disk_gate_limits(self) -> tuple[int, int]:
+        """门禁阈值：优先读 ``config/app.yaml disk_gate``，读不到才回退硬编码常量。
+
+        为什么不能只看常量：操作员在面板 / YAML 里把门槛调高或调低后，doctor 与
+        :class:`MetricsService` 必须用**同一组数**，否则会出现"doctor 说过了、启动却
+        被拦"或反过来。
+        """
+        try:
+            loaded = load_config(self._paths, env=self._env)
+            gate = loaded.bundle.app.disk_gate
+            return int(gate.free_c_min_gb * 1024**3), int(gate.free_d_min_gb * 1024**3)
+        except ConfigError:
+            return DISK_GATE_FREE_C_BYTES, DISK_GATE_FREE_D_BYTES
 
     # ── 6/7/8. Python 与 torch ──────────────────────────────
     def _check_python_app(self) -> CheckResult:
@@ -807,7 +837,11 @@ class Doctor:
                 detail=f"{version}（无法解析 uv cache dir）",
                 remediation="设置 UV_CACHE_DIR 到非系统盘后重跑",
             )
-        if is_on_system_drive(cache_dir):
+        # 单盘机器豁免：仓库本身就在系统盘时，``data/caches/uv`` 是唯一可行解。
+        # R1 要防的是**仓库外**的绝对路径把缓存堆进系统盘。
+        resolved_cache = Path(cache_dir)
+        inside_repo = _is_within(resolved_cache, self._paths.home)
+        if is_on_system_drive(resolved_cache) and not inside_repo:
             return CheckResult(
                 name="uv.version",
                 status="fail",

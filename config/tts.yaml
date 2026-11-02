@@ -8,13 +8,13 @@ schema_version: "1.0"
 python: tts/.venv/Scripts/python.exe
 
 model:
-  # 权重目录（**不落系统盘**，R1）。换机器时改这一行。
-  dir: D:/ai_models/modelscope_cache/models/iic--CosyVoice2-0.5B/snapshots/master
+  # 权重目录（本项目内 models/，随仓库一起；换机器时改这一行）。
+  dir: models/CosyVoice2-0.5B
   # 版本留痕：进 /health 与日志，也是缓存键的一部分（Q7）
   revision: 074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc
   # CosyVoice 源码 + 它的子模块 Matcha-TTS（**两段都要**，缺 Matcha 报 no module named matcha）
-  source_dir: D:/ai_models/CosyVoice
-  matcha_dir: D:/ai_models/CosyVoice/third_party/Matcha-TTS
+  source_dir: models/CosyVoice
+  matcha_dir: models/CosyVoice/third_party/Matcha-TTS
   # fp16 常驻；**禁 bf16**（Turing sm_75 无原生支持，R4）
   fp16: true
   sample_rate: 24000

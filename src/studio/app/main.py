@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from studio import __spec_version__, __version__
 from studio.app.deps import AppState, build_state
 from studio.app.errors import install_error_handlers
 from studio.app.lifespan import lifespan
+from studio.app.middleware.auth import WebUiAuth, WebUiAuthMiddleware, is_loopback_host
 from studio.app.routers.approvals import router as approvals_router
 from studio.app.routers.assets import router as assets_router
 from studio.app.routers.audit import router as audit_router
@@ -81,7 +83,20 @@ def create_app(
     )
     application.state.studio = resolved
     application.state.spec_version = __spec_version__
+    web_auth, cors_origins = _web_runtime_for(resolved.paths)
+    application.state.web_auth = web_auth
     install_error_handlers(application)
+    application.add_middleware(WebUiAuthMiddleware)
+    if cors_origins:
+        # 放在最后加 ⇒ Starlette 把它套在最外层：预检 OPTIONS 没有 Authorization，
+        # 必须先由 CORS 处理，再进认证。
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     application.include_router(health_router)
     application.include_router(logs_router)
     application.include_router(audit_router)
@@ -107,6 +122,25 @@ def create_app(
     application.include_router(ws_router)
     mount_web_ui(application, resolved.paths)
     return application
+
+
+def _web_runtime_for(paths: StudioPaths) -> tuple[WebUiAuth | None, list[str]]:
+    """按 ``app.yaml`` + ``secrets.yaml`` 现算认证策略与 CORS 白名单。
+
+    配置读不到（测试的临时家目录 / 还没初始化）⇒ 不启用认证：那意味着服务只可能
+    绑在回环地址上，与“局域网需要密码”不是同一个场景。
+    """
+    try:
+        loaded = load_config(paths)
+    except ConfigError:
+        return None, []
+    web = loaded.bundle.app.web
+    auth = WebUiAuth.from_config(
+        allow_lan=web.allow_lan,
+        host=web.host,
+        password=loaded.bundle.secrets.webui.password,
+    )
+    return auth, list(web.cors_origins)
 
 
 def mount_web_ui(application: FastAPI, paths: StudioPaths) -> None:
@@ -155,12 +189,21 @@ def run_server(
             remediation="先跑 `studio db migrate`",
         )
     web = loaded.bundle.app.web
+    # allow_lan 是“对外”的开关：打开就绑 0.0.0.0（认证由中间件强制）。
+    bind_host = host or ("0.0.0.0" if web.allow_lan else web.host)
+    if not is_loopback_host(bind_host) and not loaded.bundle.secrets.has_webui_password:
+        raise ConfigError(
+            f"绑定到非回环地址 {bind_host} 但未设置 WebUI 密码 ⇒ 拒绝启动",
+            code=ErrorCode.AUTH_LAN_WITHOUT_PASSWORD,
+            context={"host": bind_host},
+            remediation="设置 STUDIO_WEBUI_PASSWORD 或 config/secrets.yaml:webui.password",
+        )
     uvicorn.run(
         create_app(
             paths=resolved,
             hub_settings=HubSettings(tail_interval_sec=tail_interval_sec),
             openapi_enabled=web.openapi_enabled,
         ),
-        host=host or web.host,
+        host=bind_host,
         port=port or web.port,
     )

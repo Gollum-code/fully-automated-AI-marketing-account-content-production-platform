@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     一键拉起制片台（T1.12 · 原文附2 / §7.4）。
